@@ -36,8 +36,8 @@ class OpenAILLM:
         name,
     ):
         self.name = name
-        self.batch_size = 100
-        self.requests_per_minute = 100
+        self.batch_size = 1000
+        self.requests_per_minute = 5000
         self.limiter = AsyncLimiter(self.requests_per_minute, 60)
         self.client = openai.AsyncOpenAI(
             api_key=os.environ.get("OPENAI_API_KEY"),

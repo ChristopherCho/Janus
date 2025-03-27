@@ -185,8 +185,13 @@ def prepare_inputs(
 async def main(args):
     load_func = get_load_func(args.input_file)
 
-    data_dict = {d["id"]: d for d in load_func(args.input_file)}
-    data_list = list(data_dict.values())
+    # data_dict = {d["id"]: d for d in load_func(args.input_file)}
+    # data_list = list(data_dict.values())
+    data_dict = {}
+    for d in load_func(args.input_file):
+        if "id" not in d:
+            d["id"] = str(len(data_dict))
+        data_dict[d["id"]] = d
 
     if args.response_dir and args.response_file:
         raise ValueError(
@@ -205,7 +210,7 @@ async def main(args):
 
     for file_path in response_files:
         print(f"Loading file: {file_path}")
-        response_model_name = file_path.split("/")[-1].replace("_responses.json", "")
+        # response_model_name = file_path.split("/")[-1].replace("_responses.json", "")
         judgment_dict = data_dict.copy()
 
         with open(file_path, "r") as json_file:
@@ -215,7 +220,14 @@ async def main(args):
             if id not in data_dict.keys():
                 assert 0
             data_dict[id].update({"response": record["response"]})
+
         data_list = list(data_dict.values())
+        data_list = [d for d in data_list if "response" in d.keys()]
+
+        # DEBUG: Debugging purposes
+        if DEBUG:
+            data_list = data_list[:10]
+
         inputs, preference_set_indices = prepare_inputs(
             data_list,
             args.user_key,
@@ -224,8 +236,11 @@ async def main(args):
             args.system_key,
         )
 
-        output_dir = os.path.join(args.output_dir, "responses_gpt4_eval")
-        output_file = Path(output_dir) / f"{response_model_name}_evaluation.json"
+        suffix = ""
+        if DEBUG:
+            suffix = "_DEBUG"
+
+        output_file = Path(args.output_dir) / f"{args.model_name}_evaluation{suffix}.json"
         print("Output file: ", str(output_file))
 
         if output_file.exists() and not args.force_rerun:
@@ -236,17 +251,11 @@ async def main(args):
 
         batch_size = 100
 
-        # DEBUG: Debugging purposes
-        if DEBUG:
-            inputs = inputs[:10]
-            data_list = data_list[:10]
-
         feedbacks, scores = await batch_completions_with_retries(
             model, inputs, batch_size, parse_judgment_abs
         )
-
-        # assert len(feedbacks) == len(scores)
-        # assert len(feedbacks) == len(data_list)
+        assert len(feedbacks) == len(scores)
+        assert len(feedbacks) == preference_set_indices[-1]
 
         avg_score = 0.0
 
@@ -258,12 +267,17 @@ async def main(args):
             judgment_dict[instance["id"]].update(
                 {"feedback": feedbacks_set, "score": scores_set}
             )
-            avg_score += sum(scores_set) / len(scores_set)
+            scores_set_na_zeroed = [score if score is not None else 0 for score in scores_set]
+            avg_score += sum(scores_set_na_zeroed) / len(scores_set_na_zeroed)
 
         avg_score /= len(data_list)
 
         with output_file.open("w") as file:
             file.write(json.dumps(judgment_dict, indent=4))
+
+        score_file = Path(args.output_dir) / f"{args.model_name}_scores{suffix}.json"
+        with score_file.open("w") as file:
+            file.write(json.dumps({"avg_score": avg_score}))
 
         print(f"Average score: {avg_score}")
 
@@ -296,6 +310,14 @@ if __name__ == "__main__":
     parser.add_argument("--system_key", type=str, default=None)
     parser.add_argument("--num_gpus", type=int, default=0)
     parser.add_argument("--force_rerun", action="store_true")
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
+
+    if args.debug:
+        DEBUG = True
+        args.response_file = os.path.join(
+            os.path.dirname(args.response_file),
+            f"{os.path.basename(args.response_file).replace('responses.json', 'responses_DEBUG.json')}",
+        )
 
     asyncio.run(main(args))

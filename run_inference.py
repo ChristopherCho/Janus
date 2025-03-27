@@ -16,7 +16,7 @@ from utils.prompts import SAMPLING_PARAMS
 
 random.seed(42)
 
-DEBUG = True
+DEBUG = False
 
 os.environ["CURL_CA_BUNDLE"] = ""
 
@@ -236,7 +236,7 @@ def main(args):
 
     output_file = (
         Path(args.output_dir)
-        / f"{args.model_name.split('/')[-1]}_responses{suffix}.json"
+        / f"responses{suffix}.json"
     )
     print(f"Output file: {str(output_file)}")
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -314,6 +314,11 @@ if __name__ == "__main__":
     parser.add_argument("--reward_model_device_num", type=int, default=1)
     parser.add_argument("--flash_attn", action="store_true")
     parser.add_argument("--bf16", action="store_true")
+    parser.add_argument("--debug", action="store_true")
     args = parser.parse_args()
+
+    if args.debug:
+        DEBUG = True
+        args.suffix = "DEBUG"
 
     main(args)
