@@ -166,6 +166,16 @@ def batch_completions(
     return batched_outputs, best_rewards
 
 
+def apply_template_solar_chat(system_message, content, tokenizer):
+    messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": content},
+        ]
+    return tokenizer.apply_chat_template(  # automatically format to default chat template
+        messages, tokenize=False, add_generation_prompt=True
+    )
+
+
 def apply_template_chat(system_message, content, tokenizer):
     if tokenizer.chat_template and "system" not in tokenizer.chat_template:
         messages = [
@@ -197,11 +207,13 @@ def prepare_inputs(records, system_key, user_key, model_name: str, tokenizer):
         system_message = record[system_key]
         user_message = record[user_key]
 
-        input_str = (
-            apply_template_mistral_instruct(system_message, user_message)
-            if "mistral" in model_name.lower() or "janus" in model_name.lower()
-            else apply_template_chat(system_message, user_message, tokenizer)
-        )
+        if "mistral" in model_name.lower() or "janus" in model_name.lower():
+            input_str = apply_template_mistral_instruct(system_message, user_message)
+        elif "solar" in model_name.lower():
+            input_str = apply_template_solar_chat(system_message, user_message, tokenizer)
+        else:
+            input_str = apply_template_chat(system_message, user_message, tokenizer)
+
         inputs.append(input_str)
 
     random_inputs = random.sample(inputs, 3)
